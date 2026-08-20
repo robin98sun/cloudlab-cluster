@@ -186,9 +186,9 @@ case "$ROLE" in
         python3 "$REPO/cloudlab/gen_manifests.py" \
             --fe-hosts "$FE_HOSTS" --db-hosts "$DB_HOSTS" \
             --fe-instances "$FE_INSTANCES" --db-port "$DB_PORT" \
-            --out /tmp/dcb-testbed.yaml
+            --out "$STATE/dcb-testbed.yaml"
         $SUDO mkdir -p /var/lib/rancher/k3s/server/manifests
-        $SUDO cp /tmp/dcb-testbed.yaml /var/lib/rancher/k3s/server/manifests/
+        $SUDO cp "$STATE/dcb-testbed.yaml" /var/lib/rancher/k3s/server/manifests/dcb-testbed.yaml
         ;;
     fe|db|lg)
         INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
