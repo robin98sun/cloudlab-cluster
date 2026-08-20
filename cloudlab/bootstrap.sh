@@ -164,7 +164,8 @@ case "$ROLE" in
         INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
         INSTALL_K3S_SKIP_ENABLE=true K3S_TOKEN="$TOKEN" \
         INSTALL_K3S_EXEC="server --disable traefik --disable servicelb \
---disable metrics-server --write-kubeconfig-mode 644 --node-label dcb/role=ctl" \
+--disable metrics-server --write-kubeconfig-mode 644 \
+--node-name $(hostname -s) --node-label dcb/role=ctl" \
             $SUDO_E sh "$K3S_INSTALLER" >/dev/null
         # Never block bootstrap on service readiness; the wait loop below
         # (and smoke S10) verify convergence instead.
@@ -192,7 +193,7 @@ case "$ROLE" in
     fe|db|lg)
         INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
         INSTALL_K3S_SKIP_ENABLE=true K3S_URL="$SERVER_URL" K3S_TOKEN="$TOKEN" \
-        INSTALL_K3S_EXEC="agent --node-label dcb/role=${ROLE}-host" \
+        INSTALL_K3S_EXEC="agent --node-name $(hostname -s) --node-label dcb/role=${ROLE}-host" \
             $SUDO_E sh "$K3S_INSTALLER" >/dev/null
         # Non-blocking: a systemctl start that waits for join would hang
         # bootstrap forever if the server is unreachable.
