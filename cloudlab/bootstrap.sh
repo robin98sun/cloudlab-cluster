@@ -38,8 +38,8 @@ REPO=/local/repository
 STATE=/local/dcb
 LOGDIR="$STATE/logs"
 
-SUDO=""
-[ "$(id -u)" -ne 0 ] && SUDO="sudo -H"
+SUDO=""; SUDO_E="env"
+if [ "$(id -u)" -ne 0 ]; then SUDO="sudo -H"; SUDO_E="sudo -H -E"; fi
 
 $SUDO mkdir -p "$LOGDIR" "$STATE/telemetry"
 $SUDO chmod 0777 "$STATE" "$LOGDIR" "$STATE/telemetry"
@@ -63,7 +63,7 @@ else
     # records it per node and the run manifest picks it up from there.
     $SUDO curl -sfL https://get.k3s.io -o "$K3S_INSTALLER"
     INSTALL_K3S_SKIP_START=true INSTALL_K3S_SKIP_ENABLE=true \
-        $SUDO -E sh "$K3S_INSTALLER" >/dev/null
+        $SUDO_E sh "$K3S_INSTALLER" >/dev/null
 
     # Prefetch the pod base image as a k3s auto-import tarball so pod start
     # needs no registry. Best-effort: a failed prefetch means a slower first
@@ -165,7 +165,7 @@ case "$ROLE" in
         INSTALL_K3S_SKIP_ENABLE=true K3S_TOKEN="$TOKEN" \
         INSTALL_K3S_EXEC="server --disable traefik --disable servicelb \
 --disable metrics-server --write-kubeconfig-mode 644 --node-label dcb/role=ctl" \
-            $SUDO -E sh "$K3S_INSTALLER" >/dev/null
+            $SUDO_E sh "$K3S_INSTALLER" >/dev/null
         # Never block bootstrap on service readiness; the wait loop below
         # (and smoke S10) verify convergence instead.
         $SUDO systemctl enable k3s >/dev/null 2>&1 || true
@@ -193,7 +193,7 @@ case "$ROLE" in
         INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
         INSTALL_K3S_SKIP_ENABLE=true K3S_URL="$SERVER_URL" K3S_TOKEN="$TOKEN" \
         INSTALL_K3S_EXEC="agent --node-label dcb/role=${ROLE}-host" \
-            $SUDO -E sh "$K3S_INSTALLER" >/dev/null
+            $SUDO_E sh "$K3S_INSTALLER" >/dev/null
         # Non-blocking: a systemctl start that waits for join would hang
         # bootstrap forever if the server is unreachable.
         $SUDO systemctl enable k3s-agent >/dev/null 2>&1 || true
