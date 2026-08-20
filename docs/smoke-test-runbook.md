@@ -3,7 +3,7 @@
 ## 1. What this is
 
 A CloudLab testbed for distributed admission-control experiments, at its
-smallest useful scale: **3 c6620 machines** running a k3s cluster with the
+smallest useful scale: **3 machines** (default type c6525-25g) running a k3s cluster with the
 services as pinned, hostNetwork pods.
 
 ```
@@ -40,7 +40,7 @@ instance and in aggregate.
 Create a repo-backed profile in the CloudLab portal pointing at this
 repository (`profile.py` at the root — CloudLab requires the top-level
 location). Instantiate with the default `preset=smoke` on **CloudLab Utah**
-(c6620 lives there). The first boot downloads packages, the k3s binary, and
+(the vetted node types live there). The first boot downloads packages, the k3s binary, and
 the pod base image — the slow path the golden image later removes.
 
 Purposes are presets of the one profile, selected at instantiation:

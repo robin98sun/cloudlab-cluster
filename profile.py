@@ -3,7 +3,7 @@
 Project-neutral: paths, namespace, and labels use the generic name
 "testbed", so the same infrastructure serves any system under test.
 
-Physical hosts (one hardware type per comparison series, default c6620):
+Physical hosts (one hardware type per comparison series, default c6525-25g):
 
     ctl1    k3s control plane + monitoring + load generation   client LAN
     fe<j>   frontend hosts: fe_instances FE+testbed pods each      client+backend
@@ -65,7 +65,7 @@ PRESETS = {
     # Freeze everything that defines the reported configuration. Pin
     # disk_image here too once the submission-era golden image exists.
     "submission": dict(num_fe_hosts=1, num_db_hosts=3, num_lg_hosts=0,
-                       fe_instances=3, hw_type="c6620", data_size="200GB",
+                       fe_instances=3, hw_type="c6525-25g", data_size="200GB",
                        client_bw=0, backend_bw=0),
 }
 
@@ -103,11 +103,25 @@ pc.defineParameter(
                     "distributed property: several independent "
                     "admission points enforcing one shared budget.")
 pc.defineParameter(
-    "hw_type", "Hardware type", portal.ParameterType.STRING, "c6620",
-    longDescription="c6620 (Utah): 28 cores, 128GB, 2 NVMe, 2 experimental "
-                    "interfaces. Substitutions must satisfy the per-role "
-                    "requirements in the profile source; the smoke suite "
-                    "re-validates any change in minutes.")
+    "hw_type", "Hardware type", portal.ParameterType.STRING, "c6525-25g",
+    legalValues=[
+        ("c6525-25g", "c6525-25g (Utah): 16c/128GB, 2x25G expt -- usually free"),
+        ("c6620", "c6620 (Utah): 28c/128GB NVMe, 2 expt -- often reserved"),
+        ("d6515", "d6515 (Utah): 32c/128GB, 3 expt ifaces"),
+        ("d7615", "d7615 (Utah): 32c/192GB NVMe, 3 expt -- only 6 exist"),
+        ("c6525-100g", "c6525-100g (Utah): 24c/128GB, 2x100G expt"),
+    ],
+    longDescription="Vetted types only: every entry has >= 2 experimental "
+                    "interfaces (the fe-host requirement). Availability "
+                    "shifts; c6525-25g is the most reliably free. Use "
+                    "hw_type_custom for anything not listed. One homogeneous "
+                    "type per comparison series.")
+pc.defineParameter(
+    "hw_type_custom", "Custom hardware type (overrides the list)",
+    portal.ParameterType.STRING, "",
+    longDescription="Escape hatch for new or unlisted node types. Must have "
+                    ">= 2 experimental interfaces for fe hosts. The smoke "
+                    "suite re-validates any substitution in minutes.")
 pc.defineParameter(
     "disk_image", "Disk image URN", portal.ParameterType.STRING, GOLDEN_IMAGE,
     longDescription="Defaults to the golden image (~15-minute redeploy). Use "
@@ -131,6 +145,8 @@ CONFIG_FIELDS = ("num_fe_hosts", "num_db_hosts", "num_lg_hosts",
                  "fe_instances", "hw_type", "disk_image", "data_size",
                  "client_bw", "backend_bw")
 cfg = {f: getattr(params, f) for f in CONFIG_FIELDS}
+if params.hw_type_custom.strip():
+    cfg["hw_type"] = params.hw_type_custom.strip()
 if params.preset != "custom":
     if params.preset not in PRESETS:
         pc.reportError(portal.ParameterError(
