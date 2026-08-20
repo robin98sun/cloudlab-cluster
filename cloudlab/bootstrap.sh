@@ -129,6 +129,14 @@ print(json.dumps({
 }, indent=2))
 PYFACTS
 
+# CloudLab installs static inter-LAN routes (via multi-homed nodes) by
+# default. That lets non-fe hosts reach LANs they have no interface on --
+# exactly the admission bypass S06 forbids. Scrub them.
+case "$ROLE" in
+    ctl|lg) $SUDO ip route del 10.10.2.0/24 2>/dev/null || true ;;
+    db)     $SUDO ip route del 10.10.1.0/24 2>/dev/null || true ;;
+esac
+
 # k3s cluster formation. All control-plane traffic rides CloudLab's control
 # network (default route), keeping the client/backend LANs clean. Measured
 # pods use hostNetwork, so flannel never touches the measured path.
