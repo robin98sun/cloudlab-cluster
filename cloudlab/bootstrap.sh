@@ -2,7 +2,7 @@
 # Two-layer node bootstrap. Runs as a CloudLab startup service on every boot.
 #
 #   Layer 1 (bake layer)  packages, k3s binary, prefetched container images.
-#                         Skipped when /etc/dcb-image-version matches -- i.e.
+#                         Skipped when /etc/testbed-image-version matches -- i.e.
 #                         when booting from a golden image. This is the slow,
 #                         network-dependent part; baking it is what makes the
 #                         ~15-minute redeploy possible.
@@ -30,12 +30,12 @@ IMAGE_LAYER=1          # bump when the bake layer's contents change, then rebake
 DB_PORT=9091
 # Private testbed on CloudLab's control network; static token keeps cluster
 # formation dependency-free. Not a pattern for anything internet-facing.
-TOKEN="dcb-testbed-2c9f7d41"
-K3S_INSTALLER=/usr/local/share/dcb/k3s-install.sh
+TOKEN="cloudlab-cluster-2c9f7d41"
+K3S_INSTALLER=/usr/local/share/testbed/k3s-install.sh
 PY_IMAGE="docker.io/library/python:3.11-slim"
 
 REPO=/local/repository
-STATE=/local/dcb
+STATE=/local/testbed
 LOGDIR="$STATE/logs"
 
 SUDO=""; SUDO_E="env"
@@ -47,7 +47,7 @@ exec > >(tee -a "$LOGDIR/bootstrap.log") 2>&1
 echo "=== bootstrap role=$ROLE image_layer_wanted=$IMAGE_LAYER at $(date -Is) ==="
 
 # ---------------------------------------------------------------- layer 1 ---
-HAVE_LAYER="$(cat /etc/dcb-image-version 2>/dev/null || echo none)"
+HAVE_LAYER="$(cat /etc/testbed-image-version 2>/dev/null || echo none)"
 if [ "$HAVE_LAYER" = "$IMAGE_LAYER" ]; then
     echo "bake layer $IMAGE_LAYER present (golden image); skipping downloads"
 else
@@ -57,7 +57,7 @@ else
     $SUDO apt-get install -y -qq chrony python3 jq curl skopeo \
         iproute2 iputils-ping sysstat >/dev/null
 
-    $SUDO mkdir -p /usr/local/share/dcb /var/lib/rancher/k3s/agent/images
+    $SUDO mkdir -p /usr/local/share/testbed /var/lib/rancher/k3s/agent/images
     # Cache the installer and fetch the k3s binary without starting anything.
     # The k3s version is thereby frozen into the golden image; facts.json
     # records it per node and the run manifest picks it up from there.
@@ -73,7 +73,7 @@ else
         >/dev/null 2>&1 \
         || echo "WARN: image prefetch failed; pods will pull from the registry"
 
-    echo "$IMAGE_LAYER" | $SUDO tee /etc/dcb-image-version >/dev/null
+    echo "$IMAGE_LAYER" | $SUDO tee /etc/testbed-image-version >/dev/null
 fi
 
 # ---------------------------------------------------------------- layer 2 ---
@@ -83,7 +83,7 @@ $SUDO chronyc makestep >/dev/null 2>&1 || true
 
 DATA_DIR=/mnt/data
 if mountpoint -q "$DATA_DIR" 2>/dev/null; then
-    $SUDO mkdir -p "$DATA_DIR/dcb"; $SUDO chmod 0777 "$DATA_DIR/dcb"
+    $SUDO mkdir -p "$DATA_DIR/store"; $SUDO chmod 0777 "$DATA_DIR/store"
     DATA_BACKING="blockstore"
 else
     DATA_DIR="$STATE/data"
@@ -123,7 +123,7 @@ print(json.dumps({
     "cpus": os.cpu_count(),
     "kernel": os.uname().release,
     "product": read("/sys/class/dmi/id/product_name"),
-    "image_layer": read("/etc/dcb-image-version"),
+    "image_layer": read("/etc/testbed-image-version"),
     "k3s_version": cmd("/usr/local/bin/k3s", "--version").splitlines()[0]
                    if os.path.exists("/usr/local/bin/k3s") else "",
 }, indent=2))
@@ -193,7 +193,7 @@ case "$ROLE" in
         INSTALL_K3S_SKIP_ENABLE=true K3S_TOKEN="$TOKEN" \
         INSTALL_K3S_EXEC="server --disable traefik --disable servicelb \
 --disable metrics-server --write-kubeconfig-mode 644 \
---node-name $(hostname -s) --node-label dcb/role=ctl" \
+--node-name $(hostname -s) --node-label testbed/role=ctl" \
             $SUDO_E sh "$K3S_INSTALLER" >/dev/null
         # Never block bootstrap on service readiness; the wait loop below
         # (and smoke S10) verify convergence instead.
@@ -214,14 +214,14 @@ case "$ROLE" in
         python3 "$REPO/cloudlab/gen_manifests.py" \
             --fe-hosts "$FE_HOSTS" --db-hosts "$DB_HOSTS" \
             --fe-instances "$FE_INSTANCES" --db-port "$DB_PORT" \
-            --out "$STATE/dcb-testbed.yaml"
+            --out "$STATE/testbed.yaml"
         $SUDO mkdir -p /var/lib/rancher/k3s/server/manifests
-        $SUDO cp "$STATE/dcb-testbed.yaml" /var/lib/rancher/k3s/server/manifests/dcb-testbed.yaml
+        $SUDO cp "$STATE/testbed.yaml" /var/lib/rancher/k3s/server/manifests/testbed.yaml
         ;;
     fe|db|lg)
         INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
         INSTALL_K3S_SKIP_ENABLE=true K3S_URL="$SERVER_URL" K3S_TOKEN="$TOKEN" \
-        INSTALL_K3S_EXEC="agent --node-name $(hostname -s) --node-label dcb/role=${ROLE}-host" \
+        INSTALL_K3S_EXEC="agent --node-name $(hostname -s) --node-label testbed/role=${ROLE}-host" \
             $SUDO_E sh "$K3S_INSTALLER" >/dev/null
         # Non-blocking: a systemctl start that waits for join would hang
         # bootstrap forever if the server is unreachable.

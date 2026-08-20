@@ -1,4 +1,4 @@
-"""Frontend / DCB host stand-in.
+"""Frontend / testbed host stand-in.
 
 Deliberately minimal -- it does exactly this and nothing else: resolve the
 fixed destination, ask the admission controller, forward or reject, record.
@@ -18,10 +18,10 @@ from urllib.request import urlopen
 from urllib.error import URLError
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dcb_stub import PassThroughAdmission  # noqa: E402
+from admission_stub import PassThroughAdmission  # noqa: E402
 
 ARGS = None
-DCB = None
+testbed = None
 DESTINATIONS = []
 DEST_LOCK = threading.Lock()
 
@@ -95,11 +95,11 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/metrics":
             return self._reply(200, {"instance": ARGS.instance_id,
                                      "node": os.uname().nodename,
-                                     "mode": DCB.mode,
-                                     "totals": DCB.totals()})
+                                     "mode": testbed.mode,
+                                     "totals": testbed.totals()})
         if u.path == "/buckets":
             return self._reply(200, {"instance": ARGS.instance_id,
-                                     "buckets": DCB.snapshot()})
+                                     "buckets": testbed.snapshot()})
         if u.path == "/kv":
             return self._kv((parse_qs(u.query).get("key") or ["?"])[0])
         return self._reply(404, {"error": "not found"})
@@ -111,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
                                      "key": key})
         dest_id = dest["destination_id"]
 
-        admitted, reason = DCB.admit(dest_id)
+        admitted, reason = testbed.admit(dest_id)
         if not admitted:
             return self._reply(429, {"error": "rejected", "reason": reason,
                                      "destination_id": dest_id, "key": key})
@@ -121,13 +121,13 @@ class Handler(BaseHTTPRequestHandler):
             with urlopen("%s/kv?key=%s" % (dest["endpoint"], key),
                          timeout=ARGS.timeout) as r:
                 payload = json.loads(r.read().decode())
-            DCB.complete(dest_id, time.monotonic() - t0, ok=True)
+            testbed.complete(dest_id, time.monotonic() - t0, ok=True)
             payload["destination_id"] = dest_id
             payload["frontend"] = ARGS.instance_id
             return self._reply(200, payload)
         except Exception as exc:                      # noqa: BLE001
             timed_out = isinstance(exc, (TimeoutError, URLError))
-            DCB.complete(dest_id, time.monotonic() - t0, ok=False,
+            testbed.complete(dest_id, time.monotonic() - t0, ok=False,
                          timed_out=timed_out)
             return self._reply(502, {"error": "downstream failure",
                                      "detail": str(exc),
@@ -135,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global ARGS, DCB
+    global ARGS, testbed
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=8081)
     p.add_argument("--bind", default="0.0.0.0")
@@ -144,13 +144,13 @@ def main():
     # Three FE pods share one hostname under hostNetwork; the instance
     # id is what tells their observations and budgets apart.
     p.add_argument("--instance-id", default=None)
-    p.add_argument("--destinations-file", default="/local/dcb/destinations.json")
-    p.add_argument("--telemetry-dir", default="/local/dcb/telemetry")
+    p.add_argument("--destinations-file", default="/local/testbed/destinations.json")
+    p.add_argument("--telemetry-dir", default="/local/testbed/telemetry")
     ARGS = p.parse_args()
     if ARGS.instance_id is None:
         ARGS.instance_id = os.uname().nodename
 
-    DCB = PassThroughAdmission()
+    testbed = PassThroughAdmission()
     os.makedirs(ARGS.telemetry_dir, exist_ok=True)
 
     def rediscover():

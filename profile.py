@@ -1,13 +1,12 @@
 """Distributed admission-control testbed -- CloudLab profile (k3s on bare metal).
 
-"dcb" appears throughout as an opaque project code name (paths, pod
-namespace, labels); the research design it refers to lives in a separate
-private repository.
+Project-neutral: paths, namespace, and labels use the generic name
+"testbed", so the same infrastructure serves any system under test.
 
 Physical hosts (one hardware type per comparison series, default c6620):
 
     ctl1    k3s control plane + monitoring + load generation   client LAN
-    fe<j>   frontend hosts: fe_instances FE+DCB pods each      client+backend
+    fe<j>   frontend hosts: fe_instances FE+testbed pods each      client+backend
             (hostNetwork, distinct ports 8081..)                LANs
     db<k>   storage hosts: 1 replica pod each (+ declared      backend LAN
             noisy-neighbor pods later)
@@ -80,7 +79,7 @@ pc.defineParameter(
 pc.defineParameter(
     "num_fe_hosts", "Frontend hosts (custom preset)",
     portal.ParameterType.INTEGER, 1,
-    longDescription="Each runs fe_instances FE+DCB pods; one host already "
+    longDescription="Each runs fe_instances FE+testbed pods; one host already "
                     "preserves the multi-upstream property.")
 pc.defineParameter(
     "num_db_hosts", "Storage hosts (custom preset)",

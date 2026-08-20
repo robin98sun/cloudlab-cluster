@@ -3,14 +3,14 @@
 # the CloudLab portal ("Create Disk Image" on this node), not here.
 #
 # Keeps:  packages, k3s binary, cached installer, prefetched image tarballs,
-#         /etc/dcb-image-version
+#         /etc/testbed-image-version
 # Wipes:  every trace of cluster identity and per-boot state, so the next
 #         boot forms a fresh cluster no matter which node this image lands on.
 set -euo pipefail
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -H"
 
-[ -f /etc/dcb-image-version ] || {
-    echo "no /etc/dcb-image-version -- run bootstrap.sh first"; exit 1; }
+[ -f /etc/testbed-image-version ] || {
+    echo "no /etc/testbed-image-version -- run bootstrap.sh first"; exit 1; }
 
 echo "== stopping k3s"
 $SUDO /usr/local/bin/k3s-killall.sh >/dev/null 2>&1 || true
@@ -28,9 +28,9 @@ $SUDO rm -f /etc/systemd/system/k3s-agent.service /etc/systemd/system/k3s-agent.
 $SUDO systemctl daemon-reload
 
 echo "== wiping per-boot state"
-$SUDO rm -rf /local/dcb
+$SUDO rm -rf /local/testbed
 
 echo
-echo "ready to image: layer version $(cat /etc/dcb-image-version)"
+echo "ready to image: layer version $(cat /etc/testbed-image-version)"
 echo "next: portal -> this node -> Create Disk Image -> pin the URN (with"
 echo "version) as disk_image in profile.py and commit."

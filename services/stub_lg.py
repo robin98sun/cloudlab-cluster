@@ -65,7 +65,7 @@ def main():
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--start-at", type=float, default=0.0,
                    help="epoch seconds; synchronised start barrier")
-    p.add_argument("--out", default="/local/dcb/telemetry/lg-results.json")
+    p.add_argument("--out", default="/local/testbed/telemetry/lg-results.json")
     args = p.parse_args()
 
     rng = random.Random(args.seed)

@@ -1,4 +1,4 @@
-"""Smoke checks for the DCB testbed (k3s layout).
+"""Smoke checks for the testbed testbed (k3s layout).
 
 Runs from your workstation over the CloudLab control network. Physical checks
 (S01-S09) verify hosts and wires; cluster checks (S10-S13) verify that the
@@ -73,7 +73,7 @@ class Ctx:
         return out
 
     def facts(self, node):
-        rc, out, _ = self.ssh(node, "cat /local/dcb/facts.json")
+        rc, out, _ = self.ssh(node, "cat /local/testbed/facts.json")
         if rc != 0:
             return None
         try:
@@ -115,12 +115,12 @@ def s02(ctx):
     bad, details = [], []
     for n in ctx.nodes:
         rc, out, _ = ctx.ssh(
-            n, "echo \"$(cat /etc/dcb-image-version 2>/dev/null || echo -):"
-               "$(cat /local/dcb/boot.done 2>/dev/null || echo -)\"")
+            n, "echo \"$(cat /etc/testbed-image-version 2>/dev/null || echo -):"
+               "$(cat /local/testbed/boot.done 2>/dev/null || echo -)\"")
         image, boot = (out.split(":") + ["-"])[:2] if rc == 0 else ("-", "-")
         if boot == "-":
             rc2, tail, _ = ctx.ssh(
-                n, "tail -n 3 /local/dcb/logs/bootstrap.log 2>/dev/null")
+                n, "tail -n 3 /local/testbed/logs/bootstrap.log 2>/dev/null")
             bad.append("%s: boot layer incomplete (%s)"
                        % (n["name"], tail.replace("\n", " | ") or "no log"))
         else:
@@ -235,7 +235,7 @@ def s07(ctx):
 
     ctx.ssh(drv, "python3 /local/repository/services/stub_lg.py "
                  "--target http://%s:%d --rate 200 --duration 3 "
-                 "--out /local/dcb/telemetry/s07.json >/dev/null 2>&1"
+                 "--out /local/testbed/telemetry/s07.json >/dev/null 2>&1"
                  % (f["ip"], f["port"]), timeout=90)
 
     rc, after, err = ctx.ssh(fe_host, probe)
@@ -355,7 +355,7 @@ def s10(ctx):
         ready = [ln.split()[0] for ln in out.splitlines()
                  if len(ln.split()) > 1 and ln.split()[1] == "Ready"]
         rc, out, err = ctx.ssh(
-            ctl, "%s kubectl get pods -n dcb -o json" % K3S)
+            ctl, "%s kubectl get pods -n testbed -o json" % K3S)
         if rc != 0:
             last = "%d/%d nodes Ready; pods unreadable" % (len(ready), want_nodes)
             time.sleep(10)
@@ -460,7 +460,7 @@ def s13(ctx):
                        for f in ctx.frontends)
     start_at = time.time() + 5 + 2 * len(drivers)
     cmd = ("python3 /local/repository/services/stub_lg.py %s --rate 100 "
-           "--duration 5 --start-at %f --out /local/dcb/telemetry/s13.json"
+           "--duration 5 --start-at %f --out /local/testbed/telemetry/s13.json"
            % (targets, start_at))
     procs = ctx.ssh_parallel([(d, cmd) for d in drivers], timeout=180)
 

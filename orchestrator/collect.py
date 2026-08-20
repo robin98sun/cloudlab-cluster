@@ -118,7 +118,7 @@ def main():
 
     hardware, software = {}, {}
     for n in topo["nodes"]:
-        rc, out, _ = ssh(n, "cat /local/dcb/facts.json")
+        rc, out, _ = ssh(n, "cat /local/testbed/facts.json")
         if rc == 0:
             try:
                 hardware[n["name"]] = json.loads(out)
@@ -129,9 +129,9 @@ def main():
             software[n["name"]] = out.strip().splitlines()
 
         dest = os.path.join(root, "logs", n["name"])
-        if scp(n, "/local/dcb/logs", dest) != 0:
+        if scp(n, "/local/testbed/logs", dest) != 0:
             print("  warn: no logs from %s" % n["name"])
-        if scp(n, "/local/dcb/telemetry", os.path.join(root, "metrics", "raw",
+        if scp(n, "/local/testbed/telemetry", os.path.join(root, "metrics", "raw",
                                                        n["name"])) != 0:
             print("  warn: no telemetry from %s" % n["name"])
         print("  collected %s" % n["name"])

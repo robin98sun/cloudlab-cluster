@@ -105,7 +105,7 @@ def main():
     d = sub.add_parser("derive")
     d.add_argument("--user", required=True)
     d.add_argument("--domain", required=True,
-                   help="e.g. dcb-smoke.myproject.utah.cloudlab.us")
+                   help="e.g. testbed-smoke.myproject.utah.cloudlab.us")
     d.add_argument("--lg", type=int, default=0)
     d.add_argument("--fe", type=int, default=1)
     d.add_argument("--db", type=int, default=1)

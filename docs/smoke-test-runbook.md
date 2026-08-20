@@ -4,8 +4,7 @@
 
 A CloudLab testbed for distributed admission-control experiments, at its
 smallest useful scale: **3 c6620 machines** running a k3s cluster with the
-services as pinned, hostNetwork pods. (`dcb` throughout is an opaque project
-code name.)
+services as pinned, hostNetwork pods.
 
 ```
 ctl1   k3s server + monitoring + load generation      client LAN
@@ -75,7 +74,7 @@ ssh <node> sudo bash /local/repository/cloudlab/bake.sh
 
 This stops k3s, wipes all cluster identity and per-boot state, and keeps the
 bake layer (packages, k3s binary, prefetched image tarballs,
-`/etc/dcb-image-version`). Then in the portal: node → **Create Disk Image**.
+`/etc/testbed-image-version`). Then in the portal: node → **Create Disk Image**.
 Pin the resulting URN — **with its version** — as `disk_image` in `profile.py`
 and commit.
 
@@ -133,12 +132,12 @@ afterwards.
 
 ## 8. Seams for the system under test
 
-- `services/dcb_stub.py` — `PassThroughAdmission` is the seam where a real
+- `services/admission_stub.py` — `PassThroughAdmission` is the seam where a real
   admission controller plugs in; the bucket accounting is already wired.
 - `stub_db.py`'s latency curve is a synthetic concurrency-driven inflation,
   not a storage engine.
 - Destination discovery auto-probes; measured runs should pin
-  `/local/dcb/destinations.json`.
+  `/local/testbed/destinations.json`.
 - Pods run without CPU limits. CPU-pinning regimes and the CFS-throttling
   validity gate arrive with the co-tenancy work (a CPU limit's 100ms CFS
   quota periods inject scheduler artifacts into latency measurements).

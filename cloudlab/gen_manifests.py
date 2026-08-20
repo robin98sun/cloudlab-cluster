@@ -23,8 +23,8 @@ def pod(name, node, kind, command, volumes, mounts):
         "kind": "Pod",
         "metadata": {
             "name": name,
-            "namespace": "dcb",
-            "labels": {"app": "dcb", "dcb/kind": kind},
+            "namespace": "testbed",
+            "labels": {"app": "testbed", "testbed/kind": kind},
         },
         "spec": {
             "nodeSelector": {"kubernetes.io/hostname": node},
@@ -57,22 +57,22 @@ def main():
     p.add_argument("--fe-instances", type=int, default=3)
     p.add_argument("--fe-base-port", type=int, default=8081)
     p.add_argument("--db-port", type=int, default=9091)
-    p.add_argument("--out", default="dcb-testbed.yaml")
+    p.add_argument("--out", default="testbed.yaml")
     a = p.parse_args()
 
     common_volumes = [
         host_path("repo", "/local/repository"),
-        host_path("dcb", "/local/dcb", create=True),
+        host_path("testbed", "/local/testbed", create=True),
     ]
     common_mounts = [
         {"name": "repo", "mountPath": "/repo", "readOnly": True},
-        {"name": "dcb", "mountPath": "/local/dcb"},
+        {"name": "testbed", "mountPath": "/local/testbed"},
     ]
 
     items = [{
         "apiVersion": "v1",
         "kind": "Namespace",
-        "metadata": {"name": "dcb"},
+        "metadata": {"name": "testbed"},
     }]
 
     for j in range(1, a.fe_hosts + 1):
@@ -85,8 +85,8 @@ def main():
                  "--port", str(port),
                  "--instance-id", name,
                  "--db-port", str(a.db_port),
-                 "--destinations-file", "/local/dcb/destinations.json",
-                 "--telemetry-dir", "/local/dcb/telemetry"],
+                 "--destinations-file", "/local/testbed/destinations.json",
+                 "--telemetry-dir", "/local/testbed/telemetry"],
                 common_volumes, common_mounts))
 
     for k in range(1, a.db_hosts + 1):
@@ -94,7 +94,7 @@ def main():
             "db%d" % k, "db%d" % k, "db",
             ["python3", "/repo/services/stub_db.py",
              "--port", str(a.db_port),
-             "--data-dir", "/data/dcb"],
+             "--data-dir", "/data/store"],
             common_volumes + [host_path("data", "/mnt/data", create=True)],
             common_mounts + [{"name": "data", "mountPath": "/data"}]))
 

@@ -5,9 +5,9 @@ that boots a k3s cluster with pinned, hostNetwork service pods, plus the
 bootstrap, golden-image, verification, and result-collection tooling around
 it.
 
-Built for distributed admission-control experiments (`dcb` in paths and pod
-names is an opaque project code name -- the research design and controllers
-live in a separate private repository), but the infrastructure is generic:
+Built originally for distributed admission-control experiments, but neutral
+to any project: nothing here names or depends on a specific system under
+test. The infrastructure provides
 isolated client/backend experiment LANs, explicit pod placement, two-layer
 image-aware bootstrap, a 13-check smoke suite, and checksummed result bundles.
 

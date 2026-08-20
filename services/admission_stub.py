@@ -1,6 +1,6 @@
 """Admission-control seam plus one-second bucket accounting.
 
-This is deliberately NOT the DCB controller. It is the interface the real
+This is deliberately NOT the testbed controller. It is the interface the real
 controller will implement, wired to the bucket bookkeeping so the core accounting
 invariant -- offered = accepted + rejected, per destination, per bucket -- is
 enforced from the first smoke run rather than retrofitted.
@@ -71,7 +71,7 @@ class Bucket:
 
 
 class PassThroughAdmission:
-    """Admit-all placeholder holding the seam for the real DCB controller."""
+    """Admit-all placeholder holding the seam for the real testbed controller."""
 
     mode = "PassThrough"
 
