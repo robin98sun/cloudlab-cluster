@@ -49,3 +49,6 @@ run: smoke collect
 
 clean:
 	rm -f smoke-results.json $(TOPOLOGY)
+
+kubeconfig:
+	python3 orchestrator/kubeconfig.py --topology $(TOPOLOGY)

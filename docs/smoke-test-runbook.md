@@ -122,7 +122,20 @@ meaningless. S07 exists because with several LANs the common failure is not
 contention but misrouting — traffic silently taking the control network while
 a shaped experimental link sits idle, with nothing erroring.
 
-## 7. Networks
+## 7. Cluster control from any node
+
+k3s puts the admin kubeconfig only on ctl1. After `make topology`:
+
+```bash
+make kubeconfig
+```
+
+copies it to every node (server address rewritten to ctl1's control IP), so
+`kubectl` works on fe/db hosts too. Deliberate testbed trade-off: every node
+then holds admin credentials. Rerun after re-forming the cluster — the
+credentials change with cluster identity.
+
+## 8. Networks
 
 Client and backend LANs carry only benchmark traffic. Everything else — k3s
 API, kubelet, flannel, monitoring, SSH — rides CloudLab's control network.
@@ -130,7 +143,7 @@ Measured pods use `hostNetwork`, so the CNI overlay never touches the measured
 path. Telemetry is written locally during runs and shipped by `make collect`
 afterwards.
 
-## 8. Seams for the system under test
+## 9. Seams for the system under test
 
 - `services/admission_stub.py` — `PassThroughAdmission` is the seam where a real
   admission controller plugs in; the bucket accounting is already wired.
