@@ -133,12 +133,16 @@ PYFACTS
 # default. That lets non-fe hosts reach LANs they have no interface on --
 # exactly the admission bypass S06 forbids. Scrub them.
 case "$ROLE" in
-    ctl|lg|db)
+    ctl|lg)
         # Emulab's blanket 10.0.0.0/8 route (via the multi-homed fe host)
-        # is the actual bypass; the /24s are belt-and-suspenders.
+        # is the actual bypass; the /24 is belt-and-suspenders. NEVER touch
+        # a subnet the host has an interface on.
         $SUDO ip route del 10.0.0.0/8 2>/dev/null || true
         $SUDO ip route del 10.10.2.0/24 2>/dev/null || true
-        [ "$ROLE" = db ] && $SUDO ip route del 10.10.1.0/24 2>/dev/null || true
+        ;;
+    db)
+        $SUDO ip route del 10.0.0.0/8 2>/dev/null || true
+        $SUDO ip route del 10.10.1.0/24 2>/dev/null || true
         ;;
     fe)
         # k3s needs ip_forward=1, so fe could still route client->backend
