@@ -238,10 +238,16 @@ case "$ROLE" in
         $SUDO systemctl restart --no-block k3s-agent
         echo "k3s agent joining via $SERVER_URL (non-blocking)"
 
-        # Local admin kubeconfig: token auth against the apiserver, CA from
-        # the agent's own store (present once the agent has joined). Makes
-        # plain `kubectl` work on every node.
+        # Local admin kubeconfig: token auth against the apiserver. The CA
+        # comes from the server's public /cacerts endpoint (the agent's own
+        # copy is root-only). Makes plain `kubectl` work on every node.
         $SUDO mkdir -p /etc/rancher/k3s
+        for _ in $(seq 1 30); do
+            curl -sfk "$SERVER_URL/cacerts" | $SUDO tee /etc/rancher/k3s/server-ca.crt >/dev/null || true
+            [ -s /etc/rancher/k3s/server-ca.crt ] && break
+            sleep 2
+        done
+        $SUDO chmod 644 /etc/rancher/k3s/server-ca.crt || true
         $SUDO tee /etc/rancher/k3s/k3s.yaml >/dev/null <<KCFG
 apiVersion: v1
 kind: Config
@@ -249,7 +255,7 @@ clusters:
 - name: default
   cluster:
     server: ${SERVER_URL}
-    certificate-authority: /var/lib/rancher/k3s/agent/server-ca.crt
+    certificate-authority: /etc/rancher/k3s/server-ca.crt
 users:
 - name: admin
   user:
