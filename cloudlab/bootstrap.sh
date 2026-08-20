@@ -133,8 +133,24 @@ PYFACTS
 # default. That lets non-fe hosts reach LANs they have no interface on --
 # exactly the admission bypass S06 forbids. Scrub them.
 case "$ROLE" in
-    ctl|lg) $SUDO ip route del 10.10.2.0/24 2>/dev/null || true ;;
-    db)     $SUDO ip route del 10.10.1.0/24 2>/dev/null || true ;;
+    ctl|lg|db)
+        # Emulab's blanket 10.0.0.0/8 route (via the multi-homed fe host)
+        # is the actual bypass; the /24s are belt-and-suspenders.
+        $SUDO ip route del 10.0.0.0/8 2>/dev/null || true
+        $SUDO ip route del 10.10.2.0/24 2>/dev/null || true
+        [ "$ROLE" = db ] && $SUDO ip route del 10.10.1.0/24 2>/dev/null || true
+        ;;
+    fe)
+        # k3s needs ip_forward=1, so fe could still route client->backend
+        # for anyone with a stale route. Refuse to forward between the two
+        # experiment NICs (flannel/pod traffic is unaffected).
+        CI=$(ip -o -4 addr show | awk '$4 ~ /^10\.10\.1\./ {print $2}')
+        BI=$(ip -o -4 addr show | awk '$4 ~ /^10\.10\.2\./ {print $2}')
+        if [ -n "$CI" ] && [ -n "$BI" ]; then
+            $SUDO iptables -C FORWARD -i "$CI" -o "$BI" -j DROP 2>/dev/null ||                 $SUDO iptables -I FORWARD -i "$CI" -o "$BI" -j DROP
+            $SUDO iptables -C FORWARD -i "$BI" -o "$CI" -j DROP 2>/dev/null ||                 $SUDO iptables -I FORWARD -i "$BI" -o "$CI" -j DROP
+        fi
+        ;;
 esac
 
 # k3s cluster formation. All control-plane traffic rides CloudLab's control
