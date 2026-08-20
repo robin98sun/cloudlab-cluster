@@ -204,7 +204,8 @@ case "$ROLE" in
         echo "waiting for $EXPECTED Ready nodes"
         for _ in $(seq 1 90); do
             READY=$(/usr/local/bin/k3s kubectl get nodes --no-headers 2>/dev/null \
-                    | awk '$2 == "Ready"' | wc -l || echo 0)
+                    | awk '$2 == "Ready" {n++} END {print n+0}' || true)
+            READY=${READY:-0}
             [ "$READY" -ge "$EXPECTED" ] && break
             sleep 5
         done
