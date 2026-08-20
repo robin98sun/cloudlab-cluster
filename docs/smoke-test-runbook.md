@@ -124,16 +124,10 @@ a shaped experimental link sits idle, with nothing erroring.
 
 ## 7. Cluster control from any node
 
-k3s puts the admin kubeconfig only on ctl1. After `make topology`:
-
-```bash
-make kubeconfig
-```
-
-copies it to every node (server address rewritten to ctl1's control IP), so
-`kubectl` works on fe/db hosts too. Deliberate testbed trade-off: every node
-then holds admin credentials. Rerun after re-forming the cluster — the
-credentials change with cluster identity.
+`kubectl` works on every node out of the box: bootstrap enables static token
+auth on the apiserver (reusing the cluster join token) and each agent writes
+its own admin kubeconfig at boot. Deliberate testbed trade-off: every node
+holds admin credentials.
 
 ## 8. Networks
 

@@ -189,10 +189,18 @@ echo "k3s server endpoint: $SERVER_URL"
 
 case "$ROLE" in
     ctl)
+        # Static admin token (the join token, reused) so every agent can
+        # write its own admin kubeconfig locally -- kubectl works on all
+        # nodes with zero file distribution. Testbed trade-off, deliberate.
+        $SUDO mkdir -p /etc/rancher/k3s
+        echo "$TOKEN,admin,admin,system:masters" | \
+            $SUDO tee /etc/rancher/k3s/admin-token.csv >/dev/null
+        $SUDO chmod 600 /etc/rancher/k3s/admin-token.csv
         INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
         INSTALL_K3S_SKIP_ENABLE=true K3S_TOKEN="$TOKEN" \
         INSTALL_K3S_EXEC="server --disable traefik --disable servicelb \
 --disable metrics-server --write-kubeconfig-mode 644 \
+--kube-apiserver-arg=token-auth-file=/etc/rancher/k3s/admin-token.csv \
 --node-name $(hostname -s) --node-label testbed/role=ctl" \
             $SUDO_E sh "$K3S_INSTALLER" >/dev/null
         # Never block bootstrap on service readiness; the wait loop below
@@ -229,6 +237,31 @@ case "$ROLE" in
         $SUDO systemctl enable k3s-agent >/dev/null 2>&1 || true
         $SUDO systemctl restart --no-block k3s-agent
         echo "k3s agent joining via $SERVER_URL (non-blocking)"
+
+        # Local admin kubeconfig: token auth against the apiserver, CA from
+        # the agent's own store (present once the agent has joined). Makes
+        # plain `kubectl` work on every node.
+        $SUDO mkdir -p /etc/rancher/k3s
+        $SUDO tee /etc/rancher/k3s/k3s.yaml >/dev/null <<KCFG
+apiVersion: v1
+kind: Config
+clusters:
+- name: default
+  cluster:
+    server: ${SERVER_URL}
+    certificate-authority: /var/lib/rancher/k3s/agent/server-ca.crt
+users:
+- name: admin
+  user:
+    token: ${TOKEN}
+contexts:
+- name: default
+  context:
+    cluster: default
+    user: admin
+current-context: default
+KCFG
+        $SUDO chmod 644 /etc/rancher/k3s/k3s.yaml
         ;;
     *)
         echo "unknown role: $ROLE" >&2; exit 2 ;;
