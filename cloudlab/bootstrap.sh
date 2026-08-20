@@ -132,15 +132,44 @@ PYFACTS
 # k3s cluster formation. All control-plane traffic rides CloudLab's control
 # network (default route), keeping the client/backend LANs clean. Measured
 # pods use hostNetwork, so flannel never touches the measured path.
-DOMAIN="$(hostname -f | cut -d. -f2-)"
-SERVER_URL="https://ctl1.${DOMAIN}:6443"
+# Resolve ctl1 from the CloudLab manifest: hostname -f can be stale during
+# early boot, and /etc/hosts maps bare "ctl1" to an experiment LAN that db
+# hosts deliberately cannot reach. k3s traffic belongs on the control net.
+read -r CTL_NAME CTL_IP <<<"$(geni-get manifest 2>/dev/null | python3 -c '
+import sys, xml.etree.ElementTree as ET
+def t(e): return e.tag.split("}", 1)[-1]
+try:
+    root = ET.parse(sys.stdin).getroot()
+except Exception:
+    sys.exit(0)
+for n in root.iter():
+    if t(n) == "node" and n.get("client_id") == "ctl1":
+        for s in n.iter():
+            if t(s) == "host" and s.get("name"):
+                print(s.get("name"), s.get("ipv4") or "")
+                sys.exit(0)
+' || true)"
+if [ -n "${CTL_NAME:-}" ] && getent hosts "$CTL_NAME" >/dev/null 2>&1; then
+    SERVER_HOST="$CTL_NAME"
+elif [ -n "${CTL_IP:-}" ]; then
+    SERVER_HOST="$CTL_IP"
+else
+    SERVER_HOST="ctl1.$(hostname -f | cut -d. -f2-)"
+fi
+SERVER_URL="https://${SERVER_HOST}:6443"
+echo "k3s server endpoint: $SERVER_URL"
 
 case "$ROLE" in
     ctl)
-        INSTALL_K3S_SKIP_DOWNLOAD=true K3S_TOKEN="$TOKEN" \
+        INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
+        INSTALL_K3S_SKIP_ENABLE=true K3S_TOKEN="$TOKEN" \
         INSTALL_K3S_EXEC="server --disable traefik --disable servicelb \
 --disable metrics-server --write-kubeconfig-mode 644 --node-label dcb/role=ctl" \
             $SUDO -E sh "$K3S_INSTALLER" >/dev/null
+        # Never block bootstrap on service readiness; the wait loop below
+        # (and smoke S10) verify convergence instead.
+        $SUDO systemctl enable k3s >/dev/null 2>&1 || true
+        $SUDO systemctl restart --no-block k3s
 
         EXPECTED=$((1 + FE_HOSTS + DB_HOSTS + LG_HOSTS))
         echo "waiting for $EXPECTED Ready nodes"
@@ -161,9 +190,15 @@ case "$ROLE" in
         $SUDO cp /tmp/dcb-testbed.yaml /var/lib/rancher/k3s/server/manifests/
         ;;
     fe|db|lg)
-        INSTALL_K3S_SKIP_DOWNLOAD=true K3S_URL="$SERVER_URL" K3S_TOKEN="$TOKEN" \
+        INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_START=true \
+        INSTALL_K3S_SKIP_ENABLE=true K3S_URL="$SERVER_URL" K3S_TOKEN="$TOKEN" \
         INSTALL_K3S_EXEC="agent --node-label dcb/role=${ROLE}-host" \
             $SUDO -E sh "$K3S_INSTALLER" >/dev/null
+        # Non-blocking: a systemctl start that waits for join would hang
+        # bootstrap forever if the server is unreachable.
+        $SUDO systemctl enable k3s-agent >/dev/null 2>&1 || true
+        $SUDO systemctl restart --no-block k3s-agent
+        echo "k3s agent joining via $SERVER_URL (non-blocking)"
         ;;
     *)
         echo "unknown role: $ROLE" >&2; exit 2 ;;
