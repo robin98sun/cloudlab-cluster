@@ -50,7 +50,12 @@ and 10.10.2.(20+j); db<k> 10.10.2.(30+k).
 import geni.portal as portal
 import geni.rspec.pg as pg
 
-DEFAULT_IMAGE = "urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU22-64-STD"
+BASE_IMAGE = "urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU22-64-STD"
+# Golden image baked 2026-08-20 (bake layer 1, c6525-25g, Utah). Unversioned
+# URN tracks the latest bake; append :N to freeze a version (do that inside
+# the submission preset before tagging a release). Rebuild from BASE_IMAGE
+# by passing it as disk_image if the golden image is ever broken.
+GOLDEN_IMAGE = "urn:publicid:IDN+utah.cloudlab.us+image+aces-project-01-PG0:DCM-dev.db1"
 
 PRESETS = {
     "smoke": dict(num_fe_hosts=1, num_db_hosts=1, num_lg_hosts=0,
@@ -104,10 +109,10 @@ pc.defineParameter(
                     "requirements in the profile source; the smoke suite "
                     "re-validates any change in minutes.")
 pc.defineParameter(
-    "disk_image", "Disk image URN", portal.ParameterType.STRING, DEFAULT_IMAGE,
-    longDescription="Base Ubuntu for the first boot; the pinned golden-image "
-                    "URN (with version) afterwards for the ~15-minute "
-                    "redeploy. Not overridden by presets.")
+    "disk_image", "Disk image URN", portal.ParameterType.STRING, GOLDEN_IMAGE,
+    longDescription="Defaults to the golden image (~15-minute redeploy). Use "
+                    "BASE_IMAGE from the profile source to rebuild from "
+                    "scratch. Not overridden by presets.")
 pc.defineParameter(
     "data_size", "Data blockstore per storage host",
     portal.ParameterType.STRING, "20GB",
