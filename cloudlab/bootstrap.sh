@@ -268,6 +268,15 @@ contexts:
 current-context: default
 KCFG
         $SUDO chmod 644 /etc/rancher/k3s/k3s.yaml
+
+        # Rejoin after bake/wipe: the server still holds this node's old
+        # password secret and will reject the fresh agent as a "duplicate
+        # hostname". The admin kubeconfig works before the join completes
+        # (token auth), so clear the stale secret; the agent's retry loop
+        # then succeeds. Harmless no-op on first join.
+        kubectl delete secret -n "kube-system" \
+            "$(hostname -s).node-password.k3s" --ignore-not-found \
+            >/dev/null 2>&1 || true
         ;;
     *)
         echo "unknown role: $ROLE" >&2; exit 2 ;;

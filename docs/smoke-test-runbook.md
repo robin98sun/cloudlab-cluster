@@ -32,8 +32,9 @@ make local
 ```
 
 Runs 3 frontend instances + 1 storage stub on this machine; verifies instance
-attribution and the accounting identity `offered = accepted + rejected`, per
-instance and in aggregate.
+attribution and the gate-level accounting identity
+`frontend_offered = frontend_accepted + frontend_rejected`, per instance and
+in aggregate.
 
 ## 3. First boot (base image — one-time, ~25 min)
 
@@ -60,8 +61,8 @@ controller its own host (independent failure domains/resources), a dedicated
 load generator, and a monitor free of load generation. Pod-failure and
 host-failure experiments must be labeled separately.
 
-**Measurement validity gates** (a run's verdict is valid only if all hold
-during the measurement window; recorded in the bundle):
+**Declared measurement validity gates** (a run's verdict is valid only if all
+hold during the measurement window and are recorded in the bundle):
 
 - load generator: late_sends <= 1%, achieved/requested rate >= 98%
 - every FE host: CPU <= 85%; ctl host: CPU <= 70%
@@ -69,9 +70,9 @@ during the measurement window; recorded in the bundle):
 - clocks: |offset| <= 5 ms on every node (S08)
 - telemetry: all expected per-node files present and gap-free
 
-Gate enforcement runs in the harness before any verdict; until a bundle
-carries passing gate results it is treated as plumbing-valid regardless of
-preset.
+Automated gate enforcement is not yet implemented in the harness. Until it is,
+and until a bundle carries machine-generated passing gate results, every run is
+treated as plumbing-valid regardless of preset.
 
 A preset **overrides** the individual fields it defines; `disk_image` is
 never preset-bound and always comes from the form (pin the golden URN as its
@@ -132,7 +133,7 @@ re-checks after a reboot.
 | S10 | k3s nodes Ready; every pod Running **on its pinned host** (waits up to `--k8s-wait`) |
 | S11 | pods healthy; every frontend resolved its destinations |
 | S12 | end-to-end request through every frontend instance, attributed to the right instance id |
-| S13 | `offered = accepted + rejected` per frontend instance and aggregate ≈ issued |
+| S13 | `frontend_offered = frontend_accepted + frontend_rejected` per FE; aggregate `frontend_offered` reconciles with `client_attempts_sent` after transport failures |
 
 S10 fails immediately (no waiting) on a *misplaced* pod — placement is pinned,
 so disagreement between manifest and topology cannot resolve itself.
