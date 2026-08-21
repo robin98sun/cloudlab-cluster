@@ -45,12 +45,33 @@ the pod base image — the slow path the golden image later removes.
 
 Purposes are presets of the one profile, selected at instantiation:
 
-| preset | machines | db hosts | intent |
-|---|---:|---:|---|
-| `smoke` | 3 | 1 | plumbing verification, fast iteration |
-| `full` | 5 | 3 | baseline experiments |
-| `submission` | 5 | 3 | frozen bindings; bind a portal profile to a release **tag** |
-| `custom` | — | — | the individual form fields apply |
+| preset | machines | topology | validity class |
+|---|---:|---|---|
+| `smoke` | 3 | ctl+lg / 1 fe host (3 pods) / 1 db | plumbing-valid |
+| `full` | 5 | ctl+lg / 1 fe host (3 pods) / 3 db | plumbing-valid |
+| `measurement` | 8 | ctl / lg1 / fe1-3 (1 pod each) / db1-3 | measurement-valid **when gates pass** |
+| `submission` | 8 | frozen measurement bindings; bind the portal profile to a release **tag** | measurement-valid when gates pass |
+| `custom` | — | individual form fields | — |
+
+**Validity classes.** Plumbing-valid presets verify wiring, placement, and
+accounting; they colocate roles (one FE host, LG on ctl) and are never a
+measurement or paper baseline. The `measurement` preset gives each FE
+controller its own host (independent failure domains/resources), a dedicated
+load generator, and a monitor free of load generation. Pod-failure and
+host-failure experiments must be labeled separately.
+
+**Measurement validity gates** (a run's verdict is valid only if all hold
+during the measurement window; recorded in the bundle):
+
+- load generator: late_sends <= 1%, achieved/requested rate >= 98%
+- every FE host: CPU <= 85%; ctl host: CPU <= 70%
+- NICs on measured paths: <= 70% of link rate, no loss/retransmit anomalies
+- clocks: |offset| <= 5 ms on every node (S08)
+- telemetry: all expected per-node files present and gap-free
+
+Gate enforcement runs in the harness before any verdict; until a bundle
+carries passing gate results it is treated as plumbing-valid regardless of
+preset.
 
 A preset **overrides** the individual fields it defines; `disk_image` is
 never preset-bound and always comes from the form (pin the golden URN as its

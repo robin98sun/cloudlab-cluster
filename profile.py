@@ -62,10 +62,18 @@ PRESETS = {
                   fe_instances=3, data_size="20GB"),
     "full": dict(num_fe_hosts=1, num_db_hosts=3, num_lg_hosts=0,
                  fe_instances=3, data_size="200GB"),
+    # measurement-v1: the measurement-valid topology (8 machines).
+    # 3 independent FE hosts (1 controller instance each = independent
+    # failure domains and resources), dedicated load generator, monitor/
+    # orchestrator free of load generation. Runs are measurement-valid only
+    # when the validity gates in the runbook also pass.
+    "measurement": dict(num_fe_hosts=3, num_db_hosts=3, num_lg_hosts=1,
+                        fe_instances=1, hw_type="c6525-25g",
+                        data_size="200GB", client_bw=0, backend_bw=0),
     # Freeze everything that defines the reported configuration. Pin
     # disk_image here too once the submission-era golden image exists.
-    "submission": dict(num_fe_hosts=1, num_db_hosts=3, num_lg_hosts=0,
-                       fe_instances=3, hw_type="c6525-25g", data_size="200GB",
+    "submission": dict(num_fe_hosts=3, num_db_hosts=3, num_lg_hosts=1,
+                       fe_instances=1, hw_type="c6525-25g", data_size="200GB",
                        client_bw=0, backend_bw=0),
 }
 
@@ -73,9 +81,10 @@ pc = portal.Context()
 
 pc.defineParameter(
     "preset", "Configuration preset", portal.ParameterType.STRING, "smoke",
-    legalValues=[("smoke", "smoke: 3 machines, 1 db host"),
-                 ("full", "full: 5 machines, 3 db hosts"),
-                 ("submission", "submission: frozen full-scale bindings"),
+    legalValues=[("smoke", "smoke: 3 machines, 1 db host (plumbing-valid)"),
+                 ("full", "full: 5 machines, 3 db hosts (plumbing-valid)"),
+                 ("measurement", "measurement: 8 machines, 3 FE hosts, dedicated LG"),
+                 ("submission", "submission: frozen measurement-scale bindings"),
                  ("custom", "custom: use the individual fields below")],
     longDescription="Anything other than 'custom' overrides the individual "
                     "fields it defines (see the profile source for exact "
