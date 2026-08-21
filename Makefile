@@ -49,3 +49,12 @@ run: smoke collect
 
 clean:
 	rm -f smoke-results.json $(TOPOLOGY)
+
+MON_NS ?= monitoring
+monitoring:
+	@ctl=$$(python3 -c "import json;t=json.load(open('$(TOPOLOGY)'));print(next(n['control'] for n in t['nodes'] if n['role']=='ctl'))"); \
+	dbips=$$(python3 -c "import json;t=json.load(open('$(TOPOLOGY)'));print(','.join('%s:9101'%d['ip'] for d in t['destinations']))" 2>/dev/null); \
+	echo "deploying monitoring to $$ctl (storaged targets: $$dbips)"; \
+	scp -q -o BatchMode=yes monitoring/monitoring.yaml monitoring/dashboard.yaml robin98@$$ctl:/tmp/; \
+	ssh -o BatchMode=yes robin98@$$ctl "sudo /usr/local/bin/k3s kubectl apply -f /tmp/monitoring.yaml -f /tmp/dashboard.yaml"; \
+	echo "Grafana: http://$$ctl:3000  Prometheus: http://$$ctl:9090"

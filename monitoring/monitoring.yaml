@@ -1,0 +1,155 @@
+# Day-1 observability stack, deployed on the monitor node (ctl).
+# node-exporter (host CPU/disk/net -- the validity-gate signals) +
+# Prometheus (annotation-based pod discovery) + Grafana (one dashboard).
+# All hostNetwork on the control net; scraping never touches measured LANs.
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: monitoring}
+---
+# node-exporter on every host
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: node-exporter, namespace: monitoring}
+spec:
+  selector: {matchLabels: {app: node-exporter}}
+  template:
+    metadata:
+      labels: {app: node-exporter}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}
+    spec:
+      hostNetwork: true
+      hostPID: true
+      tolerations: [{operator: Exists}]
+      containers:
+      - name: node-exporter
+        image: quay.io/prometheus/node-exporter:v1.8.2
+        args: ["--path.rootfs=/host", "--web.listen-address=:9100"]
+        ports: [{containerPort: 9100, hostPort: 9100}]
+        volumeMounts: [{name: root, mountPath: /host, readOnly: true}]
+      volumes: [{name: root, hostPath: {path: /}}]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: prometheus, namespace: monitoring}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: prometheus}
+rules:
+- apiGroups: [""]
+  resources: [nodes, nodes/proxy, services, endpoints, pods]
+  verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: prometheus}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: prometheus}
+subjects: [{kind: ServiceAccount, name: prometheus, namespace: monitoring}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: prometheus-config, namespace: monitoring}
+data:
+  prometheus.yml: |
+    global: {scrape_interval: 2s, evaluation_interval: 5s}
+    scrape_configs:
+    - job_name: nodes
+      kubernetes_sd_configs: [{role: pod}]
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __address__]
+        action: replace
+        regex: "([^;]+);(.+):(\\d+)"
+        replacement: "$2:$1"
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: "(.+)"
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: host
+      - source_labels: [__meta_kubernetes_pod_label_testbed_kind]
+        target_label: kind
+    # storaged runs as bare processes during the spike; static targets by host.
+    - job_name: storaged
+      static_configs:
+      - targets: []   # filled by 'make monitoring' with db-host backend IPs
+      metrics_path: /metrics/prom
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: prometheus, namespace: monitoring}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: prometheus}}
+  template:
+    metadata: {labels: {app: prometheus}}
+    spec:
+      serviceAccountName: prometheus
+      nodeSelector: {testbed/role: ctl-host}
+      hostNetwork: true
+      containers:
+      - name: prometheus
+        image: quay.io/prometheus/prometheus:v2.54.1
+        args: ["--config.file=/etc/prometheus/prometheus.yml",
+               "--storage.tsdb.path=/data",
+               "--storage.tsdb.retention.time=6h",
+               "--web.listen-address=:9090"]
+        ports: [{containerPort: 9090, hostPort: 9090}]
+        volumeMounts:
+        - {name: config, mountPath: /etc/prometheus}
+        - {name: data, mountPath: /data}
+      volumes:
+      - {name: config, configMap: {name: prometheus-config}}
+      - {name: data, hostPath: {path: /local/testbed/prometheus, type: DirectoryOrCreate}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: grafana-provisioning, namespace: monitoring}
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://localhost:9090
+      isDefault: true
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: testbed
+      folder: ''
+      type: file
+      options: {path: /var/lib/grafana/dashboards}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: grafana, namespace: monitoring}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: grafana}}
+  template:
+    metadata: {labels: {app: grafana}}
+    spec:
+      nodeSelector: {testbed/role: ctl-host}
+      hostNetwork: true
+      containers:
+      - name: grafana
+        image: docker.io/grafana/grafana:11.2.0
+        env:
+        - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+        - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: "Admin"}
+        - {name: GF_SERVER_HTTP_PORT, value: "3000"}
+        ports: [{containerPort: 3000, hostPort: 3000}]
+        volumeMounts:
+        - {name: prov-ds, mountPath: /etc/grafana/provisioning/datasources}
+        - {name: prov-db, mountPath: /etc/grafana/provisioning/dashboards}
+        - {name: dashboards, mountPath: /var/lib/grafana/dashboards}
+      volumes:
+      - {name: prov-ds, configMap: {name: grafana-provisioning, items: [{key: datasource.yaml, path: datasource.yaml}]}}
+      - {name: prov-db, configMap: {name: grafana-provisioning, items: [{key: dashboards.yaml, path: dashboards.yaml}]}}
+      - {name: dashboards, configMap: {name: grafana-dashboards}}
