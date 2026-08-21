@@ -89,7 +89,7 @@ spec:
     metadata: {labels: {app: prometheus}}
     spec:
       serviceAccountName: prometheus
-      nodeSelector: {testbed/role: ctl-host}
+      nodeSelector: {testbed/role: ctl}
       hostNetwork: true
       containers:
       - name: prometheus
@@ -135,7 +135,7 @@ spec:
   template:
     metadata: {labels: {app: grafana}}
     spec:
-      nodeSelector: {testbed/role: ctl-host}
+      nodeSelector: {testbed/role: ctl}
       hostNetwork: true
       containers:
       - name: grafana
