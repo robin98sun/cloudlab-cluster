@@ -1,0 +1,179 @@
+# CPU placement agent.
+#
+# Kubernetes cannot express "N dedicated cores PLUS burst into a shared pool":
+# the static CPU manager is exclusive-XOR-shared per container. This agent
+# writes cgroup v2 cpusets directly to get both.
+#
+# Contract (pod annotations):
+#   testbed/dedicated-cpus: "4-7"    cores only this pod may use
+#   testbed/shared-cpus:    "12-23"  burst pool (may be shared with others)
+#   testbed/cpu-weight:     "5000"   cgroup v2 cpu.weight in the shared pool
+#
+# Resulting cpuset = dedicated + shared. Pods on the node WITHOUT a dedicated
+# annotation are confined to the shared pool, which is what makes "dedicated"
+# actually dedicated.
+#
+# Deliberately no CPU *limits* on measured pods: a limit installs a CFS quota
+# whose 100ms periods inject latency artifacts into knee detection. Isolation
+# comes from cpusets; contention inside the shared pool is arbitrated by
+# cpu.weight. Runs are validated against cfs_throttled counters.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: cpuset-agent, namespace: kube-system}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cpuset-agent}
+rules:
+- apiGroups: [""]
+  resources: [pods]
+  verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: cpuset-agent}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cpuset-agent}
+subjects: [{kind: ServiceAccount, name: cpuset-agent, namespace: kube-system}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: cpuset-agent-code, namespace: kube-system}
+data:
+  agent.py: |
+    import glob, json, os, ssl, sys, time, urllib.request
+
+    API = "https://%s:%s" % (os.environ["KUBERNETES_SERVICE_HOST"],
+                             os.environ["KUBERNETES_SERVICE_PORT"])
+    NODE = os.environ["NODE_NAME"]
+    SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+    CG = "/host/sys/fs/cgroup"
+    TOKEN = open(SA + "/token").read().strip()
+    CTX = ssl.create_default_context(cafile=SA + "/ca.crt")
+
+    def api(path):
+        r = urllib.request.Request(API + path,
+                                   headers={"Authorization": "Bearer " + TOKEN})
+        return json.load(urllib.request.urlopen(r, context=CTX, timeout=10))
+
+    NODE_CPUS = set(os.sched_getaffinity(0))
+
+    def parse_set(spec):
+        out = set()
+        for part in (spec or "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" in part:
+                a, b = part.split("-", 1)
+                out.update(range(int(a), int(b) + 1))
+            else:
+                out.add(int(part))
+        return out
+
+    def fmt(cpus):
+        return ",".join(str(c) for c in sorted(cpus))
+
+    def pod_slices(uid):
+        u = uid.replace("-", "_")
+        pats = [
+            CG + "/kubepods.slice/kubepods-pod%s.slice" % u,
+            CG + "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod%s.slice" % u,
+            CG + "/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod%s.slice" % u,
+        ]
+        return [p for p in pats if os.path.isdir(p)]
+
+    def write(path, val):
+        try:
+            with open(path, "w") as fh:
+                fh.write(val)
+            return True
+        except OSError as e:
+            print("  warn %s <- %r: %s" % (path, val, e), flush=True)
+            return False
+
+    def reconcile():
+        pods = api("/api/v1/pods?fieldSelector=spec.nodeName=%s" % NODE)["items"]
+        # union of every dedicated set on this node; non-dedicated pods must
+        # be kept out of all of them.
+        all_dedicated = set()
+        plans = []
+        for p in pods:
+            if p.get("status", {}).get("phase") != "Running":
+                continue
+            ann = (p["metadata"].get("annotations") or {})
+            ded = parse_set(ann.get("testbed/dedicated-cpus"))
+            sh = parse_set(ann.get("testbed/shared-cpus"))
+            wt = ann.get("testbed/cpu-weight")
+            all_dedicated |= ded
+            plans.append((p["metadata"]["name"], p["metadata"]["uid"], ded, sh, wt))
+        applied = 0
+        # Dedication only holds if everything else is kept off those cores:
+        # unannotated pods AND the system slice get node-minus-dedicated.
+        rest = NODE_CPUS - all_dedicated
+        for path in (CG + "/system.slice", CG + "/init.scope"):
+            if os.path.isdir(path) and all_dedicated and rest:
+                write(path + "/cpuset.cpus", fmt(rest))
+        for name, uid, ded, sh, wt in plans:
+            cpus = (ded | sh) if (ded or sh) else set(rest)
+            # other pods' dedicated cores are never available to this pod
+            cpus -= (all_dedicated - ded)
+            if not cpus:
+                continue
+            for slice_dir in pod_slices(uid):
+                cur = ""
+                try:
+                    cur = open(slice_dir + "/cpuset.cpus").read().strip()
+                except OSError:
+                    pass
+                want = fmt(cpus)
+                # kernel normalises to ranges ("4-7,16-27"); compare as sets
+                if parse_set(cur) != cpus:
+                    if write(slice_dir + "/cpuset.cpus", want):
+                        print("set %-14s %s (dedicated=%s shared=%s)"
+                              % (name, want, fmt(ded) or "-", fmt(sh) or "-"),
+                              flush=True)
+                        applied += 1
+                if wt:
+                    write(slice_dir + "/cpu.weight", wt)
+        return applied, len(plans)
+
+    if __name__ == "__main__":
+        print("cpuset-agent on %s" % NODE, flush=True)
+        while True:
+            try:
+                a, n = reconcile()
+                if a:
+                    print("reconciled %d/%d pods" % (a, n), flush=True)
+            except Exception as e:                      # keep the loop alive
+                print("error: %r" % e, flush=True)
+            time.sleep(10)
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: cpuset-agent, namespace: kube-system}
+spec:
+  selector: {matchLabels: {app: cpuset-agent}}
+  template:
+    metadata: {labels: {app: cpuset-agent}}
+    spec:
+      serviceAccountName: cpuset-agent
+      hostPID: true
+      tolerations: [{operator: Exists}]
+      containers:
+      - name: agent
+        image: docker.io/library/python:3.11-slim
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "-u", "/code/agent.py"]
+        securityContext: {privileged: true}
+        env:
+        - name: NODE_NAME
+          valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+        volumeMounts:
+        - {name: code, mountPath: /code}
+        - {name: cgroup, mountPath: /host/sys/fs/cgroup}
+        resources:
+          requests: {cpu: "50m", memory: "64Mi"}
+      volumes:
+      - {name: code, configMap: {name: cpuset-agent-code}}
+      - {name: cgroup, hostPath: {path: /sys/fs/cgroup}}
